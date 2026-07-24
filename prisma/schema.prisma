@@ -1,0 +1,261 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  role      UserRole @default(CLIENT)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  barberId  String?  @unique
+  clientId  String?  @unique
+  barber    Barber?  @relation(fields: [barberId], references: [id])
+  client    Client?  @relation(fields: [clientId], references: [id])
+}
+
+model Service {
+  id           String        @id @default(cuid())
+  name         String
+  price        Int
+  durationMin  Int
+  description  String        @default("")
+  active       Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  appointments Appointment[]
+}
+
+model Barber {
+  id                 String              @id @default(cuid())
+  name               String
+  photo              String              @default("")
+  phone              String              @default("")
+  address            String              @default("")
+  commissionPct      Int
+  active             Boolean             @default(true)
+  workStart          String              @default("09:00")
+  workEnd            String              @default("20:00")
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  adjustments        Adjustment[]
+  advanceRequests    AdvanceRequest[]
+  appointments       Appointment[]
+  payouts            Payout[]
+  schedules          Schedule[]
+  scheduleExceptions ScheduleException[]
+  user               User?
+}
+
+model Client {
+  id            String            @id @default(cuid())
+  name          String
+  phone         String            @default("")
+  email         String            @default("")
+  active        Boolean           @default(true)
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  notifications AppNotification[]
+  appointments  Appointment[]
+  user          User?
+}
+
+model Appointment {
+  id            String                     @id @default(cuid())
+  clientId      String
+  barberId      String
+  serviceId     String
+  date          String
+  time          String
+  status        AppointmentStatus          @default(PENDING)
+  createdAt     DateTime                   @default(now())
+  updatedAt     DateTime                   @updatedAt
+  barber        Barber                     @relation(fields: [barberId], references: [id])
+  client        Client                     @relation(fields: [clientId], references: [id])
+  service       Service                    @relation(fields: [serviceId], references: [id])
+  statusHistory AppointmentStatusHistory[]
+  movements     CashMovement[]
+  payment       Payment?
+  payouts       PayoutAppointment[]
+
+  @@index([barberId])
+  @@index([clientId])
+  @@index([serviceId])
+  @@index([status])
+  @@index([date])
+  @@index([barberId, date])
+  @@index([barberId, status, date])
+  @@unique([barberId, date, time])
+}
+
+model Payment {
+  id            String        @id @default(cuid())
+  appointmentId String        @unique
+  amount        Int
+  method        PaymentMethod
+  status        PaymentStatus @default(PENDING)
+  createdAt     DateTime      @default(now())
+  appointment   Appointment   @relation(fields: [appointmentId], references: [id])
+
+  @@index([status, createdAt])
+}
+
+model AppointmentStatusHistory {
+  id              String            @id @default(cuid())
+  appointmentId   String
+  fromStatus      AppointmentStatus
+  toStatus        AppointmentStatus
+  changedByUserId String?
+  createdAt       DateTime          @default(now())
+  appointment     Appointment       @relation(fields: [appointmentId], references: [id])
+}
+
+model CashMovement {
+  id            String       @id @default(cuid())
+  type          String
+  amount        Int
+  description   String
+  category      String
+  date          String
+  createdAt     DateTime     @default(now())
+  appointmentId String?
+  barberId      String?
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id])
+
+  @@index([date, type])
+  @@index([barberId])
+}
+
+model Adjustment {
+  id          String   @id @default(cuid())
+  barberId    String
+  type        String
+  amount      Int
+  description String
+  date        String
+  createdAt   DateTime @default(now())
+  barber      Barber   @relation(fields: [barberId], references: [id])
+
+  @@index([barberId, date])
+}
+
+model Payout {
+  id             String              @id @default(cuid())
+  barberId       String
+  date           String
+  totalGenerated Int
+  commissionPct  Int
+  commission     Int
+  advances       Int
+  discounts      Int
+  total          Int
+  createdAt      DateTime            @default(now())
+  barber         Barber              @relation(fields: [barberId], references: [id])
+  appointments   PayoutAppointment[]
+
+  @@index([barberId])
+}
+
+model PayoutAppointment {
+  payoutId      String
+  appointmentId String
+  id            String      @id @default(cuid())
+  appointment   Appointment @relation(fields: [appointmentId], references: [id])
+  payout        Payout      @relation(fields: [payoutId], references: [id])
+
+  @@unique([payoutId, appointmentId])
+}
+
+model AdvanceRequest {
+  id          String   @id @default(cuid())
+  barberId    String
+  amount      Int
+  description String
+  date        String
+  status      String   @default("pending")
+  createdAt   DateTime @default(now())
+  barber      Barber   @relation(fields: [barberId], references: [id])
+}
+
+model AppNotification {
+  id        String   @id @default(cuid())
+  clientId  String
+  message   String
+  date      DateTime @default(now())
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  client    Client   @relation(fields: [clientId], references: [id])
+}
+
+model Settings {
+  id          String   @id @default(cuid())
+  shopName    String   @default("Tucson Barber")
+  address     String   @default("")
+  phone       String   @default("")
+  openDays    String[]
+  openHour    String   @default("09:00")
+  closeHour   String   @default("20:00")
+  slotMinutes Int      @default(30)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Schedule {
+  id        String @id @default(cuid())
+  barberId  String
+  dayOfWeek Int
+  startTime String
+  endTime   String
+  barber    Barber @relation(fields: [barberId], references: [id])
+
+  @@unique([barberId, dayOfWeek])
+}
+
+model ScheduleException {
+  id        String   @id @default(cuid())
+  barberId  String
+  date      String
+  isDayOff  Boolean  @default(true)
+  startTime String?
+  endTime   String?
+  createdAt DateTime @default(now())
+  barber    Barber   @relation(fields: [barberId], references: [id])
+
+  @@unique([barberId, date])
+}
+
+enum UserRole {
+  OWNER
+  BARBER
+  CLIENT
+}
+
+enum AppointmentStatus {
+  PENDING
+  CONFIRMED
+  WAITING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum PaymentMethod {
+  EFECTIVO
+  TRANSFERENCIA
+  MERCADO_PAGO
+  TARJETA
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+}
