@@ -10,5 +10,6 @@ router.post('/register', validate(registerSchema), asyncHandler(authController.r
 router.post('/login', validate(loginSchema), asyncHandler(authController.login))
 router.post('/refresh', validate(refreshSchema), asyncHandler(authController.refresh))
 router.post('/logout', asyncHandler(authController.logout))
+router.get('/health', (_req, res) => { res.json({ status: 'ok', timestamp: new Date().toISOString() }) })
 
 export default router

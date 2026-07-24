@@ -6,10 +6,14 @@
     "dev": "next dev",
     "dev:server": "tsx watch src/server/index.ts",
     "build": "next build",
+
     "start": "next start",
+    "start:server": "npx prisma migrate deploy && npx tsx src/server/index.ts",
     "lint": "eslint .",
     "server": "tsx src/server/index.ts",
-    "seed": "npx tsx prisma/seed.ts"
+    "seed": "npx tsx prisma/seed.ts",
+    "db:generate": "npx prisma generate",
+    "db:migrate": "npx prisma migrate deploy"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",
