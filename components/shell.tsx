@@ -41,11 +41,11 @@ export function Shell({
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3">
           <div className="flex items-center gap-2.5">
             <div className="flex size-9 items-center justify-center rounded-xl neu-raised-sm text-primary">
-              <Scissors className="size-5" />
+              <img src="/logo.svg" alt={brand} className="size-5" />
             </div>
             <div className="leading-tight">
               <p className="font-serif text-base font-semibold text-foreground">{brand}</p>
-              <p className="text-[11px] uppercase tracking-widest text-primary">Management Suite</p>
+              <p className="text-[11px] uppercase tracking-widest text-primary">Sistema de Turnos y Caja</p>
             </div>
           </div>
           <button
@@ -67,7 +67,7 @@ export function Shell({
           <aside className="relative flex w-64 max-w-xs flex-col gap-2 bg-background p-6 shadow-2xl neu-raised animate-in slide-in-from-left duration-200">
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-2">
-                <Scissors className="size-5 text-primary" />
+                <img src="/logo.svg" alt={brand} className="size-5 text-primary" />
                 <span className="font-serif font-semibold">{brand}</span>
               </div>
               <button

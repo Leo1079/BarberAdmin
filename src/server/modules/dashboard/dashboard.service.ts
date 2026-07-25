@@ -10,9 +10,16 @@ function monthStart() {
   return d.toISOString().split('T')[0]
 }
 
+function weekFrom() {
+  const d = new Date()
+  d.setDate(d.getDate() - 6)
+  return d.toISOString().split('T')[0]
+}
+
 export async function getOwnerDashboard() {
   const today = todayStr()
   const monthFrom = monthStart()
+  const weekFromDate = weekFrom()
 
   // turnos de hoy
   const todayAppointments = await prisma.appointment.groupBy({
@@ -93,6 +100,19 @@ export async function getOwnerDashboard() {
     having: { clientId: { _count: { gt: 1 } } },
   })
 
+  // semana: income/expense por día
+  const weekMovements = await prisma.cashMovement.groupBy({
+    by: ['date', 'type'],
+    where: { date: { gte: weekFromDate } },
+    _sum: { amount: true },
+  })
+  const weekMap: Record<string, { income: number; expense: number }> = {}
+  for (const m of weekMovements) {
+    if (!weekMap[m.date]) weekMap[m.date] = { income: 0, expense: 0 }
+    if (m.type === 'income') weekMap[m.date].income = m._sum.amount ?? 0
+    else weekMap[m.date].expense = m._sum.amount ?? 0
+  }
+
   return {
     today: {
       appointments: todayCounts,
@@ -110,13 +130,19 @@ export async function getOwnerDashboard() {
       newClients: monthClients,
       recurringClients: clientApptCounts.length,
     },
+    week: Array.from({ length: 7 }).map((_, i) => {
+      const d = new Date()
+      d.setDate(d.getDate() - (6 - i))
+      const ds = d.toISOString().split('T')[0]
+      return { date: ds, income: weekMap[ds]?.income ?? 0, expense: weekMap[ds]?.expense ?? 0 }
+    }),
   }
 }
 
 export async function getBarberDashboard(barberId: string) {
   const today = todayStr()
   const monthFrom = monthStart()
-  const nowTime = new Date().toTimeString().slice(0, 5)
+  const weekFromDate = weekFrom()
 
   // turnos de hoy (los que aún no pasaron)
   const todayAppointments = await prisma.appointment.findMany({
@@ -180,6 +206,37 @@ export async function getBarberDashboard(barberId: string) {
   })
   const commissionPending = Math.round((pendingIncome._sum.amount ?? 0) * barber.commissionPct / 100)
 
+  // semana: earned/advances por día
+  const weekAppointments = await prisma.appointment.findMany({
+    where: { barberId, status: 'COMPLETED', date: { gte: weekFromDate } },
+    select: { date: true, service: { select: { price: true } }, payment: { select: { amount: true } } },
+  })
+  const weekAdvances = await prisma.adjustment.groupBy({
+    by: ['date'],
+    where: { barberId, type: 'advance', date: { gte: weekFromDate } },
+    _sum: { amount: true },
+  })
+  const advanceMap: Record<string, number> = {}
+  for (const a of weekAdvances) {
+    advanceMap[a.date] = a._sum.amount ?? 0
+  }
+  const earnedMap: Record<string, number> = {}
+  for (const a of weekAppointments) {
+    const value = (a.payment?.amount ?? a.service.price) * barber.commissionPct / 100
+    earnedMap[a.date] = Math.round((earnedMap[a.date] ?? 0) + value)
+  }
+
+  const week = Array.from({ length: 7 }).map((_, i) => {
+    const d = new Date()
+    d.setDate(d.getDate() - (6 - i))
+    const ds = d.toISOString().split('T')[0]
+    return { date: ds, earned: earnedMap[ds] ?? 0, advances: advanceMap[ds] ?? 0 }
+  })
+  const weekTotals = {
+    earned: week.reduce((s, w) => s + w.earned, 0),
+    advances: week.reduce((s, w) => s + w.advances, 0),
+  }
+
   return {
     todayAppointments,
     upcoming,
@@ -192,6 +249,8 @@ export async function getBarberDashboard(barberId: string) {
       commissionGenerated,
       commissionPending,
     },
+    week,
+    weekTotals,
   }
 }
 

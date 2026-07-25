@@ -1,30 +1,15 @@
 "use client"
 
 import { Loader2 } from "lucide-react"
-import { useCallback, useEffect, useState } from "react"
+import useSWR from "swr"
 import { Card, SectionTitle } from "@/components/ui-kit"
-import { apiClient } from "@/lib/api-client"
+import { swrFetcher, SWR_CONFIG } from "@/lib/swr-fetcher"
 import type { Client } from "@/lib/types"
 
 export function ClientProfile() {
-  const [client, setClient] = useState<Client | null>(null)
-  const [loading, setLoading] = useState(true)
-
-  const fetchClient = useCallback(async () => {
-    setLoading(true)
-    try {
-      const data = await apiClient.get<Client[]>("/api/clients")
-      setClient(data[0] ?? null)
-    } catch {
-      // silence
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    fetchClient()
-  }, [fetchClient])
+  const { data: clients = [], isLoading } = useSWR<Client[]>("/api/clients", swrFetcher, { ...SWR_CONFIG, fallbackData: [] })
+  const loading = isLoading
+  const client = clients[0]
 
   if (loading) {
     return <div className="flex justify-center py-12 text-muted-foreground"><Loader2 className="size-6 animate-spin" /></div>
@@ -33,7 +18,6 @@ export function ClientProfile() {
   return (
     <div>
       <SectionTitle title="Mi perfil" subtitle="Tus datos personales" />
-
       <Card className="max-w-md">
         <div className="space-y-4">
           <div>

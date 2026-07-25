@@ -1,47 +1,35 @@
 "use client"
 
 import { CheckCircle2, Key, Loader2, Pencil, Plus, Power, X } from "lucide-react"
-import { useCallback, useEffect, useState } from "react"
+import { useState } from "react"
+import useSWR, { useSWRConfig } from "swr"
 import { Badge, Button, Card, Field, Input, Modal, SectionTitle } from "@/components/ui-kit"
 import { apiClient } from "@/lib/api-client"
 import { formatDate, money } from "@/lib/helpers"
+import { swrFetcher, SWR_CONFIG } from "@/lib/swr-fetcher"
+import { withLoading } from "@/lib/swal-action"
 import type { AdvanceRequest, Barber } from "@/lib/types"
 
 type StaffTab = "staff" | "advances"
 
 export function AdminStaff() {
   const [tab, setTab] = useState<StaffTab>("staff")
-  const [barbers, setBarbers] = useState<Barber[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState("")
   const [editing, setEditing] = useState<Barber | null>(null)
   const [creating, setCreating] = useState(false)
   const [resettingPasswordBarber, setResettingPasswordBarber] = useState<Barber | null>(null)
 
-  const fetchBarbers = useCallback(async () => {
-    setLoading(true)
-    setError("")
-    try {
-      const data = await apiClient.get<Barber[]>("/api/barbers")
-      setBarbers(data)
-    } catch (err: any) {
-      setError(err?.message || "Error al cargar el equipo de barberos")
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    fetchBarbers()
-  }, [fetchBarbers])
-
+  const { data: barbers = [], isLoading } = useSWR<Barber[]>("/api/barbers", swrFetcher, { ...SWR_CONFIG, fallbackData: [] })
+  const loading = isLoading
+  const [error, setError] = useState("")
   const [togglingId, setTogglingId] = useState<string | null>(null)
+
+  const { mutate } = useSWRConfig()
 
   const handleToggleActive = async (b: Barber) => {
     setTogglingId(b.id)
     try {
-      await apiClient.patch(`/api/barbers/${b.id}/toggle-active`)
-      fetchBarbers()
+      await withLoading(apiClient.patch(`/api/barbers/${b.id}/toggle-active`), { loading: "Cambiando estado...", success: "Estado actualizado" })
+      mutate("/api/barbers")
     } catch (err: any) {
       alert(err?.message || "Error al cambiar estado del barbero")
     } finally {
@@ -100,9 +88,10 @@ export function AdminStaff() {
                 <Card key={b.id} className="flex flex-col gap-4">
                   <div className="flex items-center gap-3">
                     <img
-                      src={b.photo || "/thoughtful-barber.png"}
+                      src={b.photo || "/placeholder-user.jpg"}
                       alt={b.name}
                       className="size-14 rounded-full object-cover"
+                      onError={(e) => { (e.target as HTMLImageElement).src = "/placeholder-user.jpg" }}
                     />
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-medium">{b.name}</p>
@@ -159,11 +148,8 @@ export function AdminStaff() {
           {(creating || editing) && (
             <BarberModal
               barber={editing}
-              onClose={() => {
-                setEditing(null)
-                setCreating(false)
-              }}
-              onSuccess={fetchBarbers}
+              onClose={() => { setEditing(null); setCreating(false) }}
+              onSuccess={() => mutate("/api/barbers")}
             />
           )}
 
@@ -182,36 +168,17 @@ export function AdminStaff() {
 }
 
 function AdvanceRequestsSection() {
-  const [requests, setRequests] = useState<AdvanceRequest[]>([])
-  const [barbers, setBarbers] = useState<Barber[]>([])
-  const [loading, setLoading] = useState(true)
+  const { data: requests = [], isLoading } = useSWR<AdvanceRequest[]>("/api/commissions/advance-requests", swrFetcher, { ...SWR_CONFIG, fallbackData: [] })
+  const { data: barbers = [] } = useSWR<Barber[]>("/api/barbers", swrFetcher, { ...SWR_CONFIG, fallbackData: [] })
+  const loading = isLoading
   const [error, setError] = useState("")
 
-  const fetchData = useCallback(async () => {
-    setLoading(true)
-    setError("")
-    try {
-      const [requestsData, barbersData] = await Promise.all([
-        apiClient.get<AdvanceRequest[]>("/api/commissions/advance-requests"),
-        apiClient.get<Barber[]>("/api/barbers"),
-      ])
-      setRequests(requestsData)
-      setBarbers(barbersData)
-    } catch (err: any) {
-      setError(err?.message || "Error al cargar solicitudes")
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    fetchData()
-  }, [fetchData])
+  const { mutate } = useSWRConfig()
 
   const handleApprove = async (id: string) => {
     try {
-      await apiClient.patch(`/api/commissions/advance-requests/${id}/status`, { status: "approved" })
-      fetchData()
+      await withLoading(apiClient.patch(`/api/commissions/advance-requests/${id}/status`, { status: "approved" }), { loading: "Aprobando solicitud...", success: "Solicitud aprobada" })
+      mutate("/api/commissions/advance-requests")
     } catch (err: any) {
       alert(err?.message || "Error al aprobar solicitud")
     }
@@ -219,8 +186,8 @@ function AdvanceRequestsSection() {
 
   const handleReject = async (id: string) => {
     try {
-      await apiClient.patch(`/api/commissions/advance-requests/${id}/status`, { status: "rejected" })
-      fetchData()
+      await withLoading(apiClient.patch(`/api/commissions/advance-requests/${id}/status`, { status: "rejected" }), { loading: "Rechazando solicitud...", success: "Solicitud rechazada" })
+      mutate("/api/commissions/advance-requests")
     } catch (err: any) {
       alert(err?.message || "Error al rechazar solicitud")
     }
@@ -367,23 +334,12 @@ function BarberModal({
     setSaving(true)
     setError("")
     try {
-      const payload: any = {
-        name,
-        email,
-        phone,
-        address,
-        photo: photo || "/thoughtful-barber.png",
-        commissionPct: Number(commissionPct),
-        workStart,
-        workEnd,
-      }
-      if (!barber?.id) {
-        payload.password = password
-      }
+      const payload: any = { name, email, phone, address, photo: photo.trim(), commissionPct: Number(commissionPct), workStart, workEnd }
+      if (!barber?.id) { payload.password = password }
       if (barber?.id) {
-        await apiClient.patch(`/api/barbers/${barber.id}`, payload)
+        await withLoading(apiClient.patch(`/api/barbers/${barber.id}`, payload), { loading: "Guardando cambios...", success: "Barbero actualizado" })
       } else {
-        await apiClient.post("/api/barbers", payload)
+        await withLoading(apiClient.post("/api/barbers", payload), { loading: "Creando barbero...", success: "Barbero creado" })
       }
       onSuccess()
       onClose()
@@ -406,85 +362,39 @@ function BarberModal({
           <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nombre y apellido" />
         </Field>
         <Field label="Email">
-          <Input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="email@ejemplo.com"
-          />
+          <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email@ejemplo.com" />
         </Field>
         {!barber && (
           <Field label="Contraseña">
-            <Input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Mínimo 8 caracteres"
-            />
+            <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Mínimo 8 caracteres" />
           </Field>
         )}
         <div className="grid grid-cols-2 gap-4">
-          <Field label="Teléfono">
-            <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Número de teléfono" />
-          </Field>
-          <Field label="Dirección">
-            <Input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Dirección física" />
-          </Field>
+          <Field label="Teléfono"><Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Número de teléfono" /></Field>
+          <Field label="Dirección"><Input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Dirección física" /></Field>
         </div>
         <div className="grid grid-cols-2 gap-4">
-          <Field label="% Comisión">
-            <Input
-              type="number"
-              value={commissionPct}
-              onChange={(e) => setCommissionPct(e.target.value)}
-            />
-          </Field>
-          <Field label="Foto URL">
-            <Input
-              value={photo}
-              onChange={(e) => setPhoto(e.target.value)}
-              placeholder="/thoughtful-barber.png"
-            />
-          </Field>
+          <Field label="% Comisión"><Input type="number" value={commissionPct} onChange={(e) => setCommissionPct(e.target.value)} /></Field>
+          <Field label="Foto URL"><Input value={photo} onChange={(e) => setPhoto(e.target.value)} placeholder="https://ejemplo.com/foto.jpg" /></Field>
         </div>
         <div className="grid grid-cols-2 gap-4">
           <Field label="Entrada">
-            <input
-              type="time"
-              value={workStart}
-              onChange={(e) => setWorkStart(e.target.value)}
-              className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary [color-scheme:dark]"
-            />
+            <input type="time" value={workStart} onChange={(e) => setWorkStart(e.target.value)} className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary [color-scheme:dark]" />
           </Field>
           <Field label="Salida">
-            <input
-              type="time"
-              value={workEnd}
-              onChange={(e) => setWorkEnd(e.target.value)}
-              className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary [color-scheme:dark]"
-            />
+            <input type="time" value={workEnd} onChange={(e) => setWorkEnd(e.target.value)} className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary [color-scheme:dark]" />
           </Field>
         </div>
         <div className="flex justify-end gap-2 pt-2">
-          <Button variant="outline" onClick={onClose} disabled={saving}>
-            Cancelar
-          </Button>
-          <Button onClick={submit} disabled={saving}>
-            {saving ? "Guardando..." : "Guardar"}
-          </Button>
+          <Button variant="outline" onClick={onClose} disabled={saving}>Cancelar</Button>
+          <Button onClick={submit} disabled={saving}>{saving ? "Guardando..." : "Guardar"}</Button>
         </div>
       </div>
     </Modal>
   )
 }
 
-function ResetPasswordModal({
-  barber,
-  onClose,
-}: {
-  barber: Barber | null
-  onClose: () => void
-}) {
+function ResetPasswordModal({ barber, onClose }: { barber: Barber | null; onClose: () => void }) {
   const [newPassword, setNewPassword] = useState("")
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
@@ -493,60 +403,31 @@ function ResetPasswordModal({
   if (!barber) return null
 
   async function submit() {
-    if (newPassword.length < 8) {
-      setError("La contraseña debe tener al menos 8 caracteres")
-      return
-    }
-    setSaving(true)
-    setError("")
+    if (newPassword.length < 8) { setError("La contraseña debe tener al menos 8 caracteres"); return }
+    setSaving(true); setError("")
     try {
-      await apiClient.patch(`/api/barbers/${barber?.id}/reset-password`, {
-        newPassword,
-      })
+      await withLoading(apiClient.patch(`/api/barbers/${barber?.id}/reset-password`, { newPassword }), { loading: "Reseteando contraseña...", success: "Contraseña reseteada" })
       setSuccess(true)
     } catch (err: any) {
       setError(err?.message || "Error al resetear contraseña")
-    } finally {
-      setSaving(false)
-    }
+    } finally { setSaving(false) }
   }
 
   return (
     <Modal open onClose={onClose} title="Resetear contraseña">
       {success ? (
         <div className="grid gap-4 py-4 text-center">
-          <p className="text-sm text-foreground">
-            ¡La contraseña de <strong>{barber?.name}</strong> ha sido reseteada con éxito!
-          </p>
-          <Button onClick={onClose} className="mx-auto w-32">
-            Aceptar
-          </Button>
+          <p className="text-sm text-foreground">¡La contraseña de <strong>{barber?.name}</strong> ha sido reseteada con éxito!</p>
+          <Button onClick={onClose} className="mx-auto w-32">Aceptar</Button>
         </div>
       ) : (
         <div className="grid gap-4">
-          {error && (
-            <div className="rounded-xl border border-destructive/20 bg-destructive/10 p-3 text-xs text-destructive">
-              {error}
-            </div>
-          )}
-          <p className="text-sm text-muted-foreground">
-            Ingresa la nueva contraseña para <strong>{barber?.name}</strong>:
-          </p>
-          <Field label="Nueva contraseña">
-            <Input
-              type="password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              placeholder="Mínimo 8 caracteres"
-            />
-          </Field>
+          {error && <div className="rounded-xl border border-destructive/20 bg-destructive/10 p-3 text-xs text-destructive">{error}</div>}
+          <p className="text-sm text-muted-foreground">Ingresa la nueva contraseña para <strong>{barber?.name}</strong>:</p>
+          <Field label="Nueva contraseña"><Input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Mínimo 8 caracteres" /></Field>
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" onClick={onClose} disabled={saving}>
-              Cancelar
-            </Button>
-            <Button onClick={submit} disabled={saving}>
-              {saving ? "Guardando..." : "Confirmar"}
-            </Button>
+            <Button variant="outline" onClick={onClose} disabled={saving}>Cancelar</Button>
+            <Button onClick={submit} disabled={saving}>{saving ? "Guardando..." : "Confirmar"}</Button>
           </div>
         </div>
       )}

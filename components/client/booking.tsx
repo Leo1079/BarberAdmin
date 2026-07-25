@@ -2,12 +2,17 @@
 
 import { Check, ChevronLeft, ChevronRight, Loader2, MapPin, Scissors, Sparkles, User } from "lucide-react"
 import { useEffect, useState } from "react"
+import useSWR from "swr"
 import { Button, Card, cn } from "@/components/ui-kit"
-import { formatDate, money } from "@/lib/helpers"
-import { useStore, todayStr } from "@/lib/store"
+import { formatDate, money, todayStr } from "@/lib/helpers"
+import { swrFetcher, SWR_CONFIG } from "@/lib/swr-fetcher"
 import { apiClient } from "@/lib/api-client"
+import { withLoading } from "@/lib/swal-action"
+import { useAuth } from "@/lib/auth-context"
+import type { Service, Barber, Settings } from "@/lib/types"
 
 const STEPS = ["Sucursal", "Servicio", "Barbero", "Fecha y hora", "Confirmar"]
+const DEFAULT_SETTINGS: Settings = { shopName: "", address: "", phone: "", openDays: [], openHour: "09:00", closeHour: "20:00", slotMinutes: 30 }
 
 function nextDates(count: number): string[] {
   const out: string[] = []
@@ -23,8 +28,11 @@ function nextDates(count: number): string[] {
 }
 
 export function ClientBooking({ onDone }: { onDone: () => void }) {
-  const store = useStore()
-  const { services, barbers, settings, session } = store
+  const { user } = useAuth()
+
+  const { data: services = [] } = useSWR<Service[]>("/api/services", swrFetcher, { ...SWR_CONFIG, fallbackData: [] })
+  const { data: barbers = [] } = useSWR<Barber[]>("/api/barbers", swrFetcher, { ...SWR_CONFIG, fallbackData: [] })
+  const { data: settings = DEFAULT_SETTINGS } = useSWR<Settings>("/api/settings", swrFetcher, { ...SWR_CONFIG, fallbackData: DEFAULT_SETTINGS })
   const activeBarbers = barbers.filter((b) => b.active)
 
   const [step, setStep] = useState(0)
@@ -32,7 +40,6 @@ export function ClientBooking({ onDone }: { onDone: () => void }) {
   const [barberId, setBarberId] = useState("any")
   const [date, setDate] = useState(todayStr())
   const [time, setTime] = useState("")
-  const [slots, setSlots] = useState<string[]>([])
   const [loadingSlots, setLoadingSlots] = useState(false)
   const [resolvedBarberId, setResolvedBarberId] = useState("")
   const [error, setError] = useState("")
@@ -82,13 +89,13 @@ export function ClientBooking({ onDone }: { onDone: () => void }) {
     setSubmitting(true)
     setError("")
     try {
-      await apiClient.post("/api/appointments", {
-        clientId: session.clientId,
+      await withLoading(apiClient.post("/api/appointments", {
+        clientId: user?.clientId ?? "",
         barberId: resolvedBarberId,
         serviceId,
         date,
         time,
-      })
+      }), { loading: "Reservando turno...", success: "Turno reservado" })
       onDone()
     } catch (err: any) {
       const msg = err?.message ?? ""
@@ -199,9 +206,10 @@ export function ClientBooking({ onDone }: { onDone: () => void }) {
                 )}
               >
                 <img
-                  src={b.photo || "/placeholder.svg"}
+                  src={b.photo || "/placeholder-user.jpg"}
                   alt={b.name}
                   className="size-10 rounded-full object-cover"
+                  onError={(e) => { (e.target as HTMLImageElement).src = "/placeholder-user.jpg" }}
                 />
                 <div>
                   <p className="font-medium text-foreground">{b.name}</p>
@@ -219,10 +227,7 @@ export function ClientBooking({ onDone }: { onDone: () => void }) {
               {nextDates(10).map((d) => (
                 <button
                   key={d}
-                  onClick={() => {
-                    setDate(d)
-                    setTime("")
-                  }}
+                  onClick={() => { setDate(d); setTime("") }}
                   className={cn(
                     "shrink-0 rounded-xl px-3 py-2 text-center text-xs transition-all duration-200",
                     date === d ? "neu-inset text-primary" : "neu-raised-sm hover:neu-raised",

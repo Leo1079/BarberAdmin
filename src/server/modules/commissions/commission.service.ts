@@ -87,7 +87,7 @@ export async function getPendingSummary() {
       const commission = Math.round(totalGenerated * barber.commissionPct / 100)
 
       const adjustments = await prisma.adjustment.findMany({
-        where: { barberId: barber.id },
+        where: { barberId: barber.id, payoutId: null },
       })
       const advances = adjustments.filter(a => a.type === 'advance').reduce((s, a) => s + a.amount, 0)
       const discounts = adjustments.filter(a => a.type === 'discount').reduce((s, a) => s + a.amount, 0)
@@ -138,7 +138,7 @@ export async function calculatePayout(data: { barberId: string; dateFrom: string
     const adjustments = await tx.adjustment.findMany({
       where: {
         barberId: data.barberId,
-        date: { gte: data.dateFrom, lte: data.dateTo },
+        payoutId: null,
       },
     })
 
@@ -160,6 +160,11 @@ export async function calculatePayout(data: { barberId: string; dateFrom: string
         discounts,
         total,
       },
+    })
+
+    await tx.adjustment.updateMany({
+      where: { barberId: data.barberId, payoutId: null },
+      data: { payoutId: payout.id },
     })
 
     for (const appt of appointments) {

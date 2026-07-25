@@ -1,40 +1,41 @@
 "use client"
 
 import { Pencil, Plus, X, Loader2 } from "lucide-react"
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
+import useSWR, { useSWRConfig } from "swr"
 import { AppointmentForm } from "@/components/appointment-form"
 import { Badge, Button, Card, SectionTitle, Select } from "@/components/ui-kit"
 import { formatDate, STATUS_META } from "@/lib/helpers"
-import { todayStr } from "@/lib/seed"
+import { todayStr } from "@/lib/helpers"
+import { swrFetcher, SWR_CONFIG } from "@/lib/swr-fetcher"
 import { apiClient } from "@/lib/api-client"
+import { withLoading } from "@/lib/swal-action"
 import type { Appointment, AppointmentStatus } from "@/lib/types"
 
 const STATUS_OPTIONS: AppointmentStatus[] = ["PENDING", "CONFIRMED", "WAITING", "IN_PROGRESS", "COMPLETED", "CANCELLED"]
 
 export function AdminAgenda() {
-  const [appointments, setAppointments] = useState<Appointment[]>([])
-  const [loading, setLoading] = useState(true)
-  const [updatingId, setUpdatingId] = useState<string | null>(null)
   const [date, setDate] = useState(todayStr())
+  const [updatingId, setUpdatingId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [editing, setEditing] = useState<Appointment | null>(null)
 
-  useEffect(() => {
-    setLoading(true)
-    apiClient.get<Appointment[]>(`/api/appointments?date=${date}`)
-      .then((data) => setAppointments(Array.isArray(data) ? data : []))
-      .catch(() => setAppointments([]))
-      .finally(() => setLoading(false))
-  }, [date])
+  const { data: appointments = [], isLoading } = useSWR<Appointment[]>(
+    `/api/appointments?date=${date}`,
+    swrFetcher,
+    { ...SWR_CONFIG, fallbackData: [] },
+  )
+  const loading = isLoading
+
+  const { mutate } = useSWRConfig()
 
   async function updateStatus(id: string, status: AppointmentStatus) {
     setUpdatingId(id)
-    const prev = [...appointments]
-    setAppointments((a) => a.map((x) => x.id === id ? { ...x, status } : x))
     try {
-      await apiClient.patch(`/api/appointments/${id}/status`, { status })
+      await withLoading(apiClient.patch(`/api/appointments/${id}/status`, { status }), { loading: "Actualizando turno...", success: "Turno actualizado" })
+      mutate(`/api/appointments?date=${date}`)
     } catch {
-      setAppointments(prev)
+      // revert handled by SWR revalidation
     } finally {
       setUpdatingId(null)
     }

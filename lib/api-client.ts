@@ -63,10 +63,15 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     headers["Authorization"] = `Bearer ${token}`
   }
 
-  const response = await fetch(url, {
-    ...options,
-    headers,
-  })
+  let response: Response
+  try {
+    response = await fetch(url, {
+      ...options,
+      headers,
+    })
+  } catch {
+    throw new Error("No se pudo conectar con el servidor. Puede estar iniciando, esperá unos segundos e intentá de nuevo.")
+  }
 
   if (response.status === 401 && !endpoint.includes("/auth/login") && !endpoint.includes("/auth/refresh")) {
     const currentRefreshToken = getRefreshToken()
@@ -105,12 +110,16 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   }
 
   if (response.status === 401) {
+    if (endpoint.includes("/auth/login")) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(errorData.message || "Email o contraseña incorrectos")
+    }
     setAccessToken(null)
     setRefreshToken(null)
     if (onUnauthorizedCallback) {
       onUnauthorizedCallback()
     }
-    throw new Error("Unauthorized")
+    throw new Error("Tu sesión expiró, iniciá sesión de nuevo.")
   }
 
   if (!response.ok) {

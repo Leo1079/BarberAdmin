@@ -143,8 +143,11 @@ model Adjustment {
   date        String
   createdAt   DateTime @default(now())
   barber      Barber   @relation(fields: [barberId], references: [id])
+  payoutId    String?
+  payout      Payout?  @relation(fields: [payoutId], references: [id])
 
   @@index([barberId, date])
+  @@index([payoutId])
 }
 
 model Payout {
@@ -160,6 +163,7 @@ model Payout {
   createdAt      DateTime            @default(now())
   barber         Barber              @relation(fields: [barberId], references: [id])
   appointments   PayoutAppointment[]
+  adjustments    Adjustment[]
 
   @@index([barberId])
 }

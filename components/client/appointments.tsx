@@ -1,9 +1,12 @@
 "use client"
 
 import { CalendarPlus, Loader2, RotateCcw, X } from "lucide-react"
-import { useCallback, useEffect, useState } from "react"
+import { useState } from "react"
+import useSWR, { useSWRConfig } from "swr"
 import { Badge, Button, Card, EmptyState, Field, Modal, Select } from "@/components/ui-kit"
+import { swrFetcher, SWR_CONFIG } from "@/lib/swr-fetcher"
 import { apiClient } from "@/lib/api-client"
+import { withLoading } from "@/lib/swal-action"
 import { formatDate, STATUS_META } from "@/lib/helpers"
 import type { Appointment, Barber, Service } from "@/lib/types"
 import { useAuth } from "@/lib/auth-context"
@@ -16,49 +19,26 @@ function hoursUntil(date: string, time: string): number {
 }
 
 export function ClientAppointments({ onBook }: { onBook: () => void }) {
-  const [appointments, setAppointments] = useState<Appointment[]>([])
-  const [services, setServices] = useState<Service[]>([])
-  const [barbers, setBarbers] = useState<Barber[]>([])
-  const [loading, setLoading] = useState(true)
   const [reschedule, setReschedule] = useState<Appointment | null>(null)
 
-  const fetchData = useCallback(async () => {
-    setLoading(true)
-    try {
-      const [appts, svcs, brbs] = await Promise.all([
-        apiClient.get<Appointment[]>("/api/appointments"),
-        apiClient.get<Service[]>("/api/services"),
-        apiClient.get<Barber[]>("/api/barbers"),
-      ])
-      setAppointments(appts)
-      setServices(svcs)
-      setBarbers(brbs)
-    } catch {
-      // silence
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+  const { data: appointments = [] } = useSWR<Appointment[]>("/api/appointments", swrFetcher, { ...SWR_CONFIG, fallbackData: [] })
+  const { data: services = [] } = useSWR<Service[]>("/api/services", swrFetcher, { ...SWR_CONFIG, fallbackData: [] })
+  const { data: barbers = [], isLoading } = useSWR<Barber[]>("/api/barbers", swrFetcher, { ...SWR_CONFIG, fallbackData: [] })
+  const loading = isLoading
 
-  useEffect(() => {
-    fetchData()
-  }, [fetchData])
+  const { mutate } = useSWRConfig()
 
   const mine = appointments.sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time))
   const active = mine.filter((a) => a.status !== "COMPLETED" && a.status !== "CANCELLED")
   const past = mine.filter((a) => a.status === "COMPLETED" || a.status === "CANCELLED")
 
-  function svcName(id: string) {
-    return services.find((s) => s.id === id)?.name ?? "Servicio"
-  }
-  function barberName(id: string) {
-    return barbers.find((b) => b.id === id)?.name ?? "Barbero"
-  }
+  function svcName(id: string) { return services.find((s) => s.id === id)?.name ?? "Servicio" }
+  function barberName(id: string) { return barbers.find((b) => b.id === id)?.name ?? "Barbero" }
 
   async function handleCancel(id: string) {
     try {
-      await apiClient.patch(`/api/appointments/${id}/status`, { status: "CANCELLED" })
-      fetchData()
+      await withLoading(apiClient.patch(`/api/appointments/${id}/status`, { status: "CANCELLED" }), { loading: "Cancelando turno...", success: "Turno cancelado" })
+      mutate("/api/appointments")
     } catch {
       alert("Error al cancelar el turno")
     }
@@ -72,14 +52,10 @@ export function ClientAppointments({ onBook }: { onBook: () => void }) {
     <div>
       <div className="mb-6 flex items-center justify-between">
         <h1 className="font-serif text-2xl font-semibold text-foreground">Mis turnos</h1>
-        <Button onClick={onBook}>
-          <CalendarPlus className="size-4" /> Reservar
-        </Button>
+        <Button onClick={onBook}><CalendarPlus className="size-4" /> Reservar</Button>
       </div>
 
-      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-        Activos
-      </h2>
+      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Activos</h2>
       {active.length === 0 ? (
         <EmptyState text="No tenés turnos activos." />
       ) : (
@@ -91,9 +67,7 @@ export function ClientAppointments({ onBook }: { onBook: () => void }) {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <p className="font-medium text-foreground truncate">{svcName(a.serviceId)}</p>
-                    <Badge className={STATUS_META[a.status].className}>
-                      {STATUS_META[a.status].label}
-                    </Badge>
+                    <Badge className={STATUS_META[a.status].className}>{STATUS_META[a.status].label}</Badge>
                   </div>
                   <p className="mt-1 text-sm text-muted-foreground truncate">
                     {formatDate(a.date)} · {a.time} hs · con {barberName(a.barberId)}
@@ -101,13 +75,7 @@ export function ClientAppointments({ onBook }: { onBook: () => void }) {
                 </div>
                 <div className="flex gap-2 shrink-0">
                   {(a.status === "PENDING" || a.status === "CONFIRMED") && (
-                    <Button
-                      size="sm"
-                      variant="danger"
-                      disabled={!canModify}
-                      onClick={() => handleCancel(a.id)}
-                      className="flex-1 sm:flex-none"
-                    >
+                    <Button size="sm" variant="danger" disabled={!canModify} onClick={() => handleCancel(a.id)} className="flex-1 sm:flex-none">
                       <X className="size-3.5" /> <span className="sm:hidden">Cancelar</span>
                     </Button>
                   )}
@@ -118,27 +86,18 @@ export function ClientAppointments({ onBook }: { onBook: () => void }) {
         </div>
       )}
 
-      <h2 className="mb-3 mt-8 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-        Historial
-      </h2>
+      <h2 className="mb-3 mt-8 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Historial</h2>
       {past.length === 0 ? (
         <EmptyState text="Todavía no tenés turnos pasados." />
       ) : (
         <div className="space-y-2">
           {past.map((a) => (
-            <div
-              key={a.id}
-              className="flex items-center justify-between rounded-lg border border-border bg-card px-4 py-3"
-            >
+            <div key={a.id} className="flex items-center justify-between rounded-lg border border-border bg-card px-4 py-3">
               <div>
                 <p className="text-sm font-medium text-foreground">{svcName(a.serviceId)}</p>
-                <p className="text-xs text-muted-foreground">
-                  {formatDate(a.date)} · {barberName(a.barberId)}
-                </p>
+                <p className="text-xs text-muted-foreground">{formatDate(a.date)} · {barberName(a.barberId)}</p>
               </div>
-              <Badge className={STATUS_META[a.status].className}>
-                {STATUS_META[a.status].label}
-              </Badge>
+              <Badge className={STATUS_META[a.status].className}>{STATUS_META[a.status].label}</Badge>
             </div>
           ))}
         </div>

@@ -2,61 +2,35 @@
 
 import { ArrowDownRight, ArrowUpRight, Clock, Scissors, TrendingUp, Wallet } from "lucide-react"
 import { Loader2 } from "lucide-react"
-import { useCallback, useEffect, useState } from "react"
+import { useState } from "react"
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis } from "recharts"
+import useSWR from "swr"
 import { StatCard } from "@/components/stat-card"
 import { Badge, Card, SectionTitle } from "@/components/ui-kit"
 import { formatDate, money, STATUS_META } from "@/lib/helpers"
-import { todayStr } from "@/lib/seed"
-import { apiClient } from "@/lib/api-client"
+import { todayStr } from "@/lib/helpers"
+import { swrFetcher, SWR_CONFIG } from "@/lib/swr-fetcher"
+import type { AppointmentStatus } from "@/lib/types"
 
 interface OwnerDashboard {
-  today: {
-    appointments: Record<string, number>
-    totalAppointments: number
-    income: number
-    expense: number
-    balance: number
-  }
-  month: {
-    income: number
-    expense: number
-    balance: number
-    topBarber: { id: string; name: string } | null
-    topServices: Array<{ id: string; name: string; price: number; count: number }>
-    newClients: number
-    recurringClients: number
-  }
+  today: { appointments: Record<string, number>; totalAppointments: number; income: number; expense: number; balance: number }
+  week: { date: string; income: number; expense: number }[]
 }
 
 export function AdminOverview({ onNavigate }: { onNavigate: (k: string) => void }) {
-  const [data, setData] = useState<OwnerDashboard | null>(null)
-  const [loading, setLoading] = useState(true)
-
-  const fetchData = useCallback(async () => {
-    setLoading(true)
-    try {
-      const result = await apiClient.get<OwnerDashboard>("/api/dashboard/owner")
-      setData(result)
-    } catch {
-      // silence
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    fetchData()
-  }, [fetchData])
+  const { data, isLoading } = useSWR<OwnerDashboard>(
+    "/api/dashboard/owner",
+    swrFetcher,
+    { ...SWR_CONFIG, fallbackData: null },
+  )
+  const loading = isLoading
 
   if (loading || !data) {
-    return (
-      <div className="flex justify-center py-12 text-muted-foreground">
-        <Loader2 className="size-6 animate-spin" />
-      </div>
-    )
+    return <div className="flex justify-center py-12 text-muted-foreground"><Loader2 className="size-6 animate-spin" /></div>
   }
 
-  const { today, month } = data
+  const today = data.today
+
   const todayStatusMeta: Record<string, { label: string; className: string }> = {
     PENDING: { label: "Pendiente", className: "bg-warning/15 text-warning border-warning/30" },
     CONFIRMED: { label: "Confirmado", className: "bg-primary/15 text-primary border-primary/30" },
@@ -66,11 +40,9 @@ export function AdminOverview({ onNavigate }: { onNavigate: (k: string) => void 
   }
   const todayApptStatuses = Object.entries(data.today.appointments)
 
-  const weekData = Array.from({ length: 7 }).map((_, i) => {
-    const d = new Date()
-    d.setDate(d.getDate() - (6 - i))
-    const ds = todayStr(d)
-    return { label: d.toLocaleDateString("es-AR", { weekday: "short" }), total: 0 }
+  const weekData = data.week.map((w) => {
+    const d = new Date(w.date + "T12:00:00")
+    return { ...w, label: d.toLocaleDateString("es-AR", { weekday: "short" }) }
   })
 
   return (
@@ -89,76 +61,44 @@ export function AdminOverview({ onNavigate }: { onNavigate: (k: string) => void 
         <StatCard label="Cortes realizados" value={today.totalAppointments} icon={Scissors} tone="primary" />
       </div>
 
-      <div className="mt-4 grid gap-4 md:grid-cols-3">
-        <Card className="md:col-span-2">
-          <div className="mb-4 flex items-center gap-2">
-            <TrendingUp className="size-4 text-primary" />
-            <h2 className="font-serif text-lg font-semibold">Resumen del mes</h2>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-sm text-muted-foreground">Ingresos del mes</p>
-              <p className="text-2xl font-serif font-bold text-success">{money(month.income)}</p>
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Gastos del mes</p>
-              <p className="text-2xl font-serif font-bold text-destructive">{money(month.expense)}</p>
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Balance mensual</p>
-              <p className="text-2xl font-serif font-bold" style={{ color: month.balance >= 0 ? "#16a34a" : "#dc2626" }}>
-                {money(month.balance)}
-              </p>
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Clientes nuevos / recurrentes</p>
-              <p className="text-xl font-serif font-bold">{month.newClients} / {month.recurringClients}</p>
-            </div>
-          </div>
-          {month.topBarber && (
-            <p className="mt-3 text-sm text-muted-foreground">
-              Barbero destacado: <span className="font-medium text-foreground">{month.topBarber.name}</span>
-            </p>
-          )}
-          {month.topServices.length > 0 && (
-            <div className="mt-2">
-              <p className="text-sm text-muted-foreground">Servicios más solicitados:</p>
-              <div className="flex flex-wrap gap-2 mt-1">
-                {month.topServices.map((s) => (
-                  <Badge key={s.id} className="bg-primary/10 text-primary border-primary/20">
-                    {s.name} ×{s.count}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-          )}
+      <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+        <Card className="lg:col-span-2">
+          <h2 className="mb-4 font-serif text-lg font-semibold text-foreground flex items-center gap-2">
+            <TrendingUp className="size-5 text-primary" /> Balance de la semana
+          </h2>
+          <ResponsiveContainer width="100%" height={180}>
+            <BarChart data={weekData} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+              <XAxis dataKey="label" tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />
+              <Tooltip
+                contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 13 }}
+                formatter={(v: number) => money(v)}
+              />
+              <Bar dataKey="income" fill="hsl(var(--success))" radius={[4, 4, 0, 0]} name="Ingresos" />
+              <Bar dataKey="expense" fill="hsl(var(--destructive))" radius={[4, 4, 0, 0]} name="Gastos" />
+            </BarChart>
+          </ResponsiveContainer>
         </Card>
 
         <Card>
-          <div className="mb-4 flex items-center gap-2">
-            <Clock className="size-4 text-primary" />
-            <h2 className="font-serif text-lg font-semibold">Turnos hoy</h2>
-          </div>
+          <h2 className="mb-4 font-serif text-lg font-semibold text-foreground flex items-center gap-2">
+            <Clock className="size-5 text-primary" /> Turnos hoy
+          </h2>
           {todayApptStatuses.length === 0 ? (
-            <p className="py-8 text-center text-sm text-muted-foreground">Sin turnos hoy.</p>
+            <p className="text-sm text-muted-foreground">Sin turnos</p>
           ) : (
-            <ul className="flex flex-col gap-2">
+            <div className="flex flex-col gap-2">
               {todayApptStatuses.map(([status, count]) => (
-                <li key={status} className="flex items-center justify-between rounded-xl neu-raised p-2.5">
+                <div key={status} className="flex items-center justify-between">
                   <Badge className={todayStatusMeta[status]?.className ?? ""}>
                     {todayStatusMeta[status]?.label ?? status}
                   </Badge>
-                  <span className="text-sm font-semibold tabular-nums">{count}</span>
-                </li>
+                  <span className="font-semibold tabular-nums">{count}</span>
+                </div>
               ))}
-            </ul>
+            </div>
           )}
-          <button
-            onClick={() => onNavigate("agenda")}
-            className="mt-3 w-full rounded-xl neu-raised py-2 text-xs font-medium text-muted-foreground transition-all duration-200 hover:text-foreground active:neu-inset"
-          >
-            Ver agenda completa
-          </button>
         </Card>
       </div>
     </div>

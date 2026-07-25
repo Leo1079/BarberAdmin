@@ -30,10 +30,10 @@ export async function register(data: { email: string; password: string; role?: s
 
 export async function login(email: string, password: string) {
   const user = await prisma.user.findUnique({ where: { email } })
-  if (!user) throw new AuthServiceError('Invalid credentials', 401)
+  if (!user) throw new AuthServiceError('Email o contraseña incorrectos', 401)
 
   const valid = await comparePassword(password, user.password)
-  if (!valid) throw new AuthServiceError('Invalid credentials', 401)
+  if (!valid) throw new AuthServiceError('Email o contraseña incorrectos', 401)
 
   const payload = { id: user.id, role: user.role }
   const accessToken = signAccessToken(payload)

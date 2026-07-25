@@ -2,13 +2,15 @@
 
 import { CalendarDays, HandCoins, History, LayoutDashboard, Wallet, Wallet2 } from "lucide-react"
 import { useState } from "react"
+import dynamic from "next/dynamic"
 import { Shell, type NavItem } from "@/components/shell"
-import { BarberAdvanceRequestForm } from "./advance-request-form"
-import { BarberAgenda } from "./agenda"
-import { BarberCommissions } from "./commissions"
-import { BarberHistory } from "./history"
-import { BarberHome } from "./home"
-import { BarberIncome } from "./income"
+
+const BarberAdvanceRequestForm = dynamic(() => import("./advance-request-form").then((m) => m.BarberAdvanceRequestForm), { ssr: false })
+const BarberAgenda = dynamic(() => import("./agenda").then((m) => m.BarberAgenda), { ssr: false })
+const BarberCommissions = dynamic(() => import("./commissions").then((m) => m.BarberCommissions), { ssr: false })
+const BarberHistory = dynamic(() => import("./history").then((m) => m.BarberHistory), { ssr: false })
+const BarberHome = dynamic(() => import("./home").then((m) => m.BarberHome), { ssr: false })
+const BarberIncome = dynamic(() => import("./income").then((m) => m.BarberIncome), { ssr: false })
 
 const NAV: NavItem[] = [
   { key: "home", label: "Inicio", icon: LayoutDashboard },
@@ -24,12 +26,12 @@ export function BarberApp() {
 
   return (
     <Shell brand="Tucson Barber" nav={NAV} active={view} onNavigate={setView}>
-      <div style={{ display: view === "home" ? "" : "none" }}><BarberHome onNavigate={setView} /></div>
-      <div style={{ display: view === "agenda" ? "" : "none" }}><BarberAgenda /></div>
-      <div style={{ display: view === "income" ? "" : "none" }}><BarberIncome /></div>
-      <div style={{ display: view === "commissions" ? "" : "none" }}><BarberCommissions /></div>
-      <div style={{ display: view === "advance" ? "" : "none" }}><BarberAdvanceRequestForm /></div>
-      <div style={{ display: view === "history" ? "" : "none" }}><BarberHistory /></div>
+      {view === "home" && <BarberHome onNavigate={setView} />}
+      {view === "agenda" && <BarberAgenda />}
+      {view === "income" && <BarberIncome />}
+      {view === "commissions" && <BarberCommissions />}
+      {view === "advance" && <BarberAdvanceRequestForm />}
+      {view === "history" && <BarberHistory />}
     </Shell>
   )
 }

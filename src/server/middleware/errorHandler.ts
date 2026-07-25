@@ -11,5 +11,5 @@ export function errorHandler(
 
   console.error(`[ERROR] ${status} - ${message}`, err.stack)
 
-  res.status(status).json({ error: message })
+  res.status(status).json({ message })
 }

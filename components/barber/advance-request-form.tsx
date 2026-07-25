@@ -4,6 +4,7 @@ import { HandCoins, Loader2 } from "lucide-react"
 import { useState } from "react"
 import { Button, Card, Field, Input, SectionTitle } from "@/components/ui-kit"
 import { apiClient } from "@/lib/api-client"
+import { withLoading } from "@/lib/swal-action"
 import { useAuth } from "@/lib/auth-context"
 
 export function BarberAdvanceRequestForm() {
@@ -24,12 +25,12 @@ export function BarberAdvanceRequestForm() {
     setError("")
     setSuccess(false)
     try {
-      await apiClient.post("/api/commissions/advance-requests", {
+      await withLoading(apiClient.post("/api/commissions/advance-requests", {
         barberId,
         amount: v,
         description,
         date: new Date().toISOString().slice(0, 10),
-      })
+      }), { loading: "Solicitando adelanto...", success: "Solicitud enviada" })
       setSuccess(true)
       setAmount("")
       setDescription("")

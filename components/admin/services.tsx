@@ -1,45 +1,37 @@
 "use client"
 
-import { Clock, Pencil, Plus, Scissors, Power, Loader2 } from "lucide-react"
-import { useEffect, useState, useCallback } from "react"
-import { Button, Card, Field, Input, Modal, SectionTitle } from "@/components/ui-kit"
+import { Loader2, Pencil, Plus, Power } from "lucide-react"
+import { useState } from "react"
+import useSWR, { useSWRConfig } from "swr"
+import { Badge, Button, Card, Field, Input, Modal, SectionTitle } from "@/components/ui-kit"
 import { money } from "@/lib/helpers"
+import { swrFetcher, SWR_CONFIG } from "@/lib/swr-fetcher"
 import { apiClient } from "@/lib/api-client"
+import { withLoading } from "@/lib/swal-action"
 import type { Service } from "@/lib/types"
 
 export function AdminServices() {
-  const [services, setServices] = useState<Service[]>([])
-  const [loading, setLoading] = useState(true)
+  const { data: services = [], isLoading } = useSWR<Service[]>(
+    "/api/services",
+    swrFetcher,
+    { ...SWR_CONFIG, fallbackData: [] },
+  )
+  const loading = isLoading
   const [error, setError] = useState("")
   const [editing, setEditing] = useState<Service | null>(null)
   const [creating, setCreating] = useState(false)
-
-  const fetchServices = useCallback(async () => {
-    setLoading(true)
-    setError("")
-    try {
-      const data = await apiClient.get<Service[]>("/api/services")
-      setServices(data)
-    } catch (err: any) {
-      setError(err?.message || "Error al cargar los servicios")
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    fetchServices()
-  }, [fetchServices])
-
   const [togglingId, setTogglingId] = useState<string | null>(null)
+  const [actionLoading, setActionLoading] = useState<string | null>(null)
+
+  const { mutate } = useSWRConfig()
 
   const handleToggleActive = async (service: Service) => {
     setTogglingId(service.id)
     try {
-      await apiClient.patch(`/api/services/${service.id}/toggle-active`)
-      fetchServices()
+      await withLoading(apiClient.patch(`/api/services/${service.id}/toggle-active`), { loading: "Cambiando estado...", success: "Estado actualizado" })
+      mutate("/api/services")
     } catch (err: any) {
-      alert(err?.message || "Error al cambiar estado del servicio")
+      alert(err?.message || "Error al cambiar estado")
     } finally {
       setTogglingId(null)
     }
@@ -49,7 +41,7 @@ export function AdminServices() {
     <div>
       <SectionTitle
         title="Servicios"
-        subtitle="Catálogo de servicios de la barbería"
+        subtitle="Gestioná los servicios que ofrecen los barberos"
         action={
           <Button size="sm" onClick={() => setCreating(true)}>
             <Plus className="size-4" /> Nuevo servicio
@@ -64,99 +56,66 @@ export function AdminServices() {
       )}
 
       {loading ? (
-        <div className="flex justify-center py-12 text-muted-foreground">
-          <Loader2 className="size-6 animate-spin" />
-        </div>
+        <div className="flex justify-center py-12"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
+      ) : services.length === 0 ? (
+        <p className="rounded-lg border border-dashed border-border py-12 text-center text-sm text-muted-foreground">
+          No hay servicios registrados.
+        </p>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="flex flex-col gap-2">
           {services.map((s) => (
-            <Card key={s.id} className="flex flex-col gap-3">
-              <div className="flex items-start justify-between">
-                <div className="flex size-10 items-center justify-center rounded-lg bg-primary/15 text-primary">
-                  <Scissors className="size-5" />
-                </div>
-                <div className="flex gap-1">
-                  <button
-                    onClick={() => setEditing(s)}
-                    className="rounded-md p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
-                    aria-label="Editar"
-                  >
-                    <Pencil className="size-4" />
-                  </button>
-                  <button
-                    onClick={() => handleToggleActive(s)}
-                    disabled={togglingId === s.id}
-                    className={`rounded-md p-1.5 ${
-                      s.active !== false ? "text-success hover:bg-success/15" : "text-muted-foreground hover:bg-secondary"
-                    } disabled:opacity-50`}
-                    title={s.active !== false ? "Desactivar" : "Activar"}
-                  >
-                    {togglingId === s.id ? <Loader2 className="size-4 animate-spin" /> : <Power className="size-4" />}
-                  </button>
-                </div>
-              </div>
-              <div>
+            <Card key={s.id} className="flex items-center gap-4 py-3">
+              <div className="min-w-0 flex-1">
                 <p className="font-medium">{s.name}</p>
-                <div className="mt-1 flex items-center gap-3 text-sm text-muted-foreground">
-                  <span className="flex items-center gap-1">
-                    <Clock className="size-3.5" /> {s.durationMin} min
-                  </span>
-                </div>
+                <p className="text-xs text-muted-foreground">{s.durationMin} min</p>
               </div>
-              <p className="font-serif text-xl font-semibold text-primary">{money(s.price)}</p>
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-semibold tabular-nums text-primary">{money(s.price)}</span>
+                <Badge className={s.active ? "bg-success/15 text-success border-success/30" : "bg-destructive/15 text-destructive border-destructive/30"}>
+                  {s.active ? "Activo" : "Inactivo"}
+                </Badge>
+                <Button variant="ghost" size="sm" onClick={() => setEditing(s)} aria-label="Editar">
+                  <Pencil className="size-4" />
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => handleToggleActive(s)} disabled={togglingId === s.id} aria-label="Toggle active">
+                  {togglingId === s.id ? <Loader2 className="size-4 animate-spin" /> : <Power className={`size-4 ${s.active ? "text-destructive" : "text-success"}`} />}
+                </Button>
+              </div>
             </Card>
           ))}
         </div>
       )}
 
-      {(creating || editing) && (
-        <ServiceModal
-          service={editing}
-          onClose={() => {
-            setEditing(null)
-            setCreating(false)
-          }}
-          onSuccess={fetchServices}
-        />
-      )}
+      {creating && <ServiceForm onClose={() => setCreating(false)} onSuccess={() => mutate("/api/services")} />}
+      {editing && <ServiceForm service={editing} onClose={() => setEditing(null)} onSuccess={() => mutate("/api/services")} />}
     </div>
   )
 }
 
-function ServiceModal({
-  service,
-  onClose,
-  onSuccess,
-}: {
-  service: Service | null
-  onClose: () => void
-  onSuccess: () => void
-}) {
+function ServiceForm({ service, onClose, onSuccess }: { service?: Service; onClose: () => void; onSuccess: () => void }) {
   const [name, setName] = useState(service?.name ?? "")
   const [price, setPrice] = useState(String(service?.price ?? ""))
-  const [durationMin, setDurationMin] = useState(String(service?.durationMin ?? 30))
+  const [durationMin, setDurationMin] = useState(String(service?.durationMin ?? ""))
+  const [description, setDescription] = useState(service?.description ?? "")
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
 
   async function submit() {
-    if (!name || !price) return
+    const p = Number(price)
+    const d = Number(durationMin)
+    if (!name || !p || !d) { setError("Completá todos los campos"); return }
     setSaving(true)
     setError("")
     try {
-      const payload = {
-        name,
-        price: Number(price),
-        durationMin: Number(durationMin),
-      }
-      if (service?.id) {
-        await apiClient.patch(`/api/services/${service.id}`, payload)
+      if (service) {
+        await withLoading(apiClient.patch(`/api/services/${service.id}`, { name, price: p, durationMin: d, description }), { loading: "Guardando cambios...", success: "Servicio actualizado" })
       } else {
-        await apiClient.post("/api/services", payload)
+        await withLoading(apiClient.post("/api/services", { name, price: p, durationMin: d, description }), { loading: "Creando servicio...", success: "Servicio creado" })
       }
       onSuccess()
       onClose()
     } catch (err: any) {
-      setError(err?.message || "Error al guardar servicio")
+      setError(err?.message ?? "Error al guardar")
     } finally {
       setSaving(false)
     }
@@ -165,34 +124,22 @@ function ServiceModal({
   return (
     <Modal open onClose={onClose} title={service ? "Editar servicio" : "Nuevo servicio"}>
       <div className="grid gap-4">
-        {error && (
-          <div className="rounded-xl border border-destructive/20 bg-destructive/10 p-3 text-xs text-destructive">
-            {error}
-          </div>
-        )}
         <Field label="Nombre">
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ej: Corte Fade" />
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ej: Corte Clásico" />
         </Field>
-        <div className="grid grid-cols-2 gap-4">
-          <Field label="Precio">
-            <Input type="number" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="0" />
-          </Field>
-          <Field label="Duración (min)">
-            <Input
-              type="number"
-              value={durationMin}
-              onChange={(e) => setDurationMin(e.target.value)}
-              step={15}
-            />
-          </Field>
-        </div>
+        <Field label="Precio ($)">
+          <Input type="number" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="0" />
+        </Field>
+        <Field label="Duración (min)">
+          <Input type="number" value={durationMin} onChange={(e) => setDurationMin(e.target.value)} placeholder="30" />
+        </Field>
+        <Field label="Descripción">
+          <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Opcional" />
+        </Field>
+        {error && <p className="text-sm text-destructive">{error}</p>}
         <div className="flex justify-end gap-2 pt-2">
-          <Button variant="outline" onClick={onClose} disabled={saving}>
-            Cancelar
-          </Button>
-          <Button onClick={submit} disabled={saving}>
-            {saving ? "Guardando..." : "Guardar"}
-          </Button>
+          <Button variant="outline" onClick={onClose}>Cancelar</Button>
+          <Button onClick={submit} disabled={saving}>{saving ? <Loader2 className="size-4 animate-spin" /> : null} Guardar</Button>
         </div>
       </div>
     </Modal>

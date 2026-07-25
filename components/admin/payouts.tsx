@@ -1,10 +1,13 @@
 "use client"
 
 import { Calculator, CheckCircle2, HandCoins, Loader2, Plus, X } from "lucide-react"
-import { useCallback, useEffect, useState } from "react"
+import { useState } from "react"
+import useSWR, { useSWRConfig } from "swr"
 import { Badge, Button, Card, Field, Input, Modal, SectionTitle, Select } from "@/components/ui-kit"
 import { formatDate, money } from "@/lib/helpers"
+import { swrFetcher, SWR_CONFIG } from "@/lib/swr-fetcher"
 import { apiClient } from "@/lib/api-client"
+import { withLoading } from "@/lib/swal-action"
 import type { Adjustment, AdvanceRequest, Barber, Payout } from "@/lib/types"
 
 interface BarberPending {
@@ -20,43 +23,19 @@ interface BarberPending {
 }
 
 export function AdminPayouts() {
-  const [barbers, setBarbers] = useState<Barber[]>([])
-  const [adjustments, setAdjustments] = useState<Adjustment[]>([])
-  const [payouts, setPayouts] = useState<Payout[]>([])
-  const [advanceRequests, setAdvanceRequests] = useState<AdvanceRequest[]>([])
-  const [pendingSummary, setPendingSummary] = useState<BarberPending[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState("")
   const [calcOpen, setCalcOpen] = useState(false)
   const [calcPreselected, setCalcPreselected] = useState("")
   const [adjOpen, setAdjOpen] = useState(false)
 
-  const fetchAll = useCallback(async () => {
-    setLoading(true)
-    setError("")
-    try {
-      const [barbersData, adjustmentsData, payoutsData, advData, pendingData] = await Promise.all([
-        apiClient.get<Barber[]>("/api/barbers"),
-        apiClient.get<Adjustment[]>("/api/commissions/adjustments"),
-        apiClient.get<Payout[]>("/api/commissions/payouts"),
-        apiClient.get<AdvanceRequest[]>("/api/commissions/advance-requests"),
-        apiClient.get<BarberPending[]>("/api/commissions/pending-summary"),
-      ])
-      setBarbers(barbersData)
-      setAdjustments(adjustmentsData)
-      setPayouts(payoutsData)
-      setAdvanceRequests(advData)
-      setPendingSummary(pendingData)
-    } catch (err: any) {
-      setError(err?.message || "Error al cargar datos")
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+  const { data: barbers = [] } = useSWR<Barber[]>("/api/barbers", swrFetcher, { ...SWR_CONFIG, fallbackData: [] })
+  const { data: adjustments = [] } = useSWR<Adjustment[]>("/api/commissions/adjustments", swrFetcher, { ...SWR_CONFIG, fallbackData: [] })
+  const { data: payouts = [] } = useSWR<Payout[]>("/api/commissions/payouts", swrFetcher, { ...SWR_CONFIG, fallbackData: [] })
+  const { data: advanceRequests = [] } = useSWR<AdvanceRequest[]>("/api/commissions/advance-requests", swrFetcher, { ...SWR_CONFIG, fallbackData: [] })
+  const { data: pendingSummary = [], isLoading } = useSWR<BarberPending[]>("/api/commissions/pending-summary", swrFetcher, { ...SWR_CONFIG, fallbackData: [] })
+  const loading = isLoading
+  const [error, setError] = useState("")
 
-  useEffect(() => {
-    fetchAll()
-  }, [fetchAll])
+  const { mutate } = useSWRConfig()
 
   const pending = advanceRequests.filter((r) => r.status === "pending")
   const unpaid = pendingSummary.filter((p) => p.pendingAppointments > 0 && p.total > 0)
@@ -66,8 +45,10 @@ export function AdminPayouts() {
   const handleApprove = async (id: string) => {
     setActionLoading(`approve-${id}`)
     try {
-      await apiClient.patch(`/api/commissions/advance-requests/${id}/status`, { status: "approved" })
-      fetchAll()
+      await withLoading(apiClient.patch(`/api/commissions/advance-requests/${id}/status`, { status: "approved" }), { loading: "Aprobando solicitud...", success: "Solicitud aprobada" })
+      mutate("/api/commissions/advance-requests")
+      mutate("/api/commissions/adjustments")
+      mutate("/api/commissions/pending-summary")
     } catch (err: any) {
       alert(err?.message || "Error al aprobar solicitud")
     } finally {
@@ -78,8 +59,8 @@ export function AdminPayouts() {
   const handleReject = async (id: string) => {
     setActionLoading(`reject-${id}`)
     try {
-      await apiClient.patch(`/api/commissions/advance-requests/${id}/status`, { status: "rejected" })
-      fetchAll()
+      await withLoading(apiClient.patch(`/api/commissions/advance-requests/${id}/status`, { status: "rejected" }), { loading: "Rechazando solicitud...", success: "Solicitud rechazada" })
+      mutate("/api/commissions/advance-requests")
     } catch (err: any) {
       alert(err?.message || "Error al rechazar solicitud")
     } finally {
@@ -90,8 +71,9 @@ export function AdminPayouts() {
   async function quickLiquidate(barberId: string) {
     setActionLoading(`liquidate-${barberId}`)
     try {
-      await apiClient.post("/api/commissions/payouts", { barberId, dateFrom: "2000-01-01", dateTo: new Date().toISOString().slice(0, 10) })
-      fetchAll()
+      await withLoading(apiClient.post("/api/commissions/payouts", { barberId, dateFrom: "2000-01-01", dateTo: new Date().toISOString().slice(0, 10) }), { loading: "Liquidando pago...", success: "Liquidación completada" })
+      mutate("/api/commissions/payouts")
+      mutate("/api/commissions/pending-summary")
     } catch (err: any) {
       alert(err?.message || "Error al liquidar")
     } finally {
@@ -130,7 +112,6 @@ export function AdminPayouts() {
         </div>
       )}
 
-      {/* Pending summary per barber */}
       {unpaid.length > 0 && (
         <Card className="mb-6">
           <h2 className="mb-4 font-serif text-lg font-semibold">Comisiones pendientes por barbero</h2>
@@ -233,10 +214,10 @@ export function AdminPayouts() {
           barbers={barbers}
           preselectedBarberId={calcPreselected}
           onClose={() => { setCalcOpen(false); setCalcPreselected("") }}
-          onSuccess={fetchAll}
+          onSuccess={() => { mutate("/api/commissions/payouts"); mutate("/api/commissions/pending-summary") }}
         />
       )}
-      {adjOpen && <AdjustmentModal barbers={barbers} onClose={() => setAdjOpen(false)} onSuccess={fetchAll} />}
+      {adjOpen && <AdjustmentModal barbers={barbers} onClose={() => setAdjOpen(false)} onSuccess={() => { mutate("/api/commissions/adjustments"); mutate("/api/commissions/pending-summary") }} />}
     </div>
   )
 }
@@ -276,7 +257,7 @@ function CalculatePayoutModal({
     setError("")
     setResult(null)
     try {
-      const data = await apiClient.post<any>("/api/commissions/payouts", { barberId, dateFrom, dateTo })
+      const data = await withLoading(apiClient.post<any>("/api/commissions/payouts", { barberId, dateFrom, dateTo }), { loading: "Calculando liquidación...", success: "Liquidación calculada" })
       setResult({
         totalGenerated: data.totalGenerated,
         commission: data.commission,
@@ -286,6 +267,7 @@ function CalculatePayoutModal({
         appointments: data.appointments ?? [],
         adjustments: data.adjustments ?? [],
       })
+      onSuccess()
     } catch (err: any) {
       setError(err?.message || "No se encontraron turnos para liquidar en ese rango")
     } finally {
@@ -382,13 +364,13 @@ function AdjustmentModal({
     setSaving(true)
     setError("")
     try {
-      await apiClient.post("/api/commissions/adjustments", {
+      await withLoading(apiClient.post("/api/commissions/adjustments", {
         barberId,
         type,
         amount: v,
         description,
         date: new Date().toISOString().slice(0, 10),
-      })
+      }), { loading: "Guardando...", success: "Ajuste registrado" })
       onSuccess()
       onClose()
     } catch (err: any) {

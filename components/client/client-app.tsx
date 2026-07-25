@@ -2,11 +2,13 @@
 
 import { CalendarPlus, Home, ListChecks, User } from "lucide-react"
 import { useState } from "react"
+import dynamic from "next/dynamic"
 import { Shell, type NavItem } from "@/components/shell"
-import { ClientBooking } from "./booking"
-import { ClientHome } from "./home"
-import { ClientProfile } from "./profile"
-import { ClientAppointments } from "./appointments"
+
+const ClientBooking = dynamic(() => import("./booking").then((m) => m.ClientBooking), { ssr: false })
+const ClientHome = dynamic(() => import("./home").then((m) => m.ClientHome), { ssr: false })
+const ClientProfile = dynamic(() => import("./profile").then((m) => m.ClientProfile), { ssr: false })
+const ClientAppointments = dynamic(() => import("./appointments").then((m) => m.ClientAppointments), { ssr: false })
 
 const NAV: NavItem[] = [
   { key: "home", label: "Inicio", icon: Home },

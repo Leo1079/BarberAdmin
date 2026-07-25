@@ -1,25 +1,18 @@
 "use client"
 
-import {
-  CalendarDays,
-  LayoutDashboard,
-  Scissors,
-  Settings,
-  Users,
-  UserSquare,
-  Wallet,
-  Wallet2,
-} from "lucide-react"
+import { CalendarDays, LayoutDashboard, Scissors, Settings, Users, UserSquare, Wallet, Wallet2 } from "lucide-react"
 import { useState } from "react"
+import dynamic from "next/dynamic"
 import { Shell, type NavItem } from "@/components/shell"
-import { AdminAgenda } from "./agenda"
-import { AdminCash } from "./cash"
-import { AdminClients } from "./clients"
-import { AdminOverview } from "./overview"
-import { AdminPayouts } from "./payouts"
-import { AdminReportsSettings } from "./reports-settings"
-import { AdminServices } from "./services"
-import { AdminStaff } from "./staff"
+
+const AdminAgenda = dynamic(() => import("./agenda").then((m) => m.AdminAgenda), { ssr: false })
+const AdminCash = dynamic(() => import("./cash").then((m) => m.AdminCash), { ssr: false })
+const AdminClients = dynamic(() => import("./clients").then((m) => m.AdminClients), { ssr: false })
+const AdminOverview = dynamic(() => import("./overview").then((m) => m.AdminOverview), { ssr: false })
+const AdminPayouts = dynamic(() => import("./payouts").then((m) => m.AdminPayouts), { ssr: false })
+const AdminReportsSettings = dynamic(() => import("./reports-settings").then((m) => m.AdminReportsSettings), { ssr: false })
+const AdminServices = dynamic(() => import("./services").then((m) => m.AdminServices), { ssr: false })
+const AdminStaff = dynamic(() => import("./staff").then((m) => m.AdminStaff), { ssr: false })
 
 const NAV: NavItem[] = [
   { key: "overview", label: "Resumen", icon: LayoutDashboard },
@@ -37,14 +30,14 @@ export function AdminApp() {
 
   return (
     <Shell brand="Tucson Barber" nav={NAV} active={view} onNavigate={setView}>
-      <div style={{ display: view === "overview" ? "" : "none" }}><AdminOverview onNavigate={setView} /></div>
-      <div style={{ display: view === "cash" ? "" : "none" }}><AdminCash /></div>
-      <div style={{ display: view === "staff" ? "" : "none" }}><AdminStaff /></div>
-      <div style={{ display: view === "payouts" ? "" : "none" }}><AdminPayouts /></div>
-      <div style={{ display: view === "agenda" ? "" : "none" }}><AdminAgenda /></div>
-      <div style={{ display: view === "clients" ? "" : "none" }}><AdminClients /></div>
-      <div style={{ display: view === "services" ? "" : "none" }}><AdminServices /></div>
-      <div style={{ display: view === "reports" ? "" : "none" }}><AdminReportsSettings /></div>
+      {view === "overview" && <AdminOverview onNavigate={setView} />}
+      {view === "cash" && <AdminCash />}
+      {view === "staff" && <AdminStaff />}
+      {view === "payouts" && <AdminPayouts />}
+      {view === "agenda" && <AdminAgenda />}
+      {view === "clients" && <AdminClients />}
+      {view === "services" && <AdminServices />}
+      {view === "reports" && <AdminReportsSettings />}
     </Shell>
   )
 }

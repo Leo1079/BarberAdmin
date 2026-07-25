@@ -1,40 +1,18 @@
 "use client"
 
 import { Award, Loader2, Star, TrendingUp } from "lucide-react"
-import { useCallback, useEffect, useState } from "react"
+import useSWR from "swr"
 import { StatCard } from "@/components/stat-card"
 import { Card, SectionTitle } from "@/components/ui-kit"
-import { apiClient } from "@/lib/api-client"
+import { swrFetcher, SWR_CONFIG } from "@/lib/swr-fetcher"
 import { money } from "@/lib/helpers"
 import type { Appointment, Barber, Service } from "@/lib/types"
 
 export function AdminReportsSettings() {
-  const [appointments, setAppointments] = useState<Appointment[]>([])
-  const [services, setServices] = useState<Service[]>([])
-  const [barbers, setBarbers] = useState<Barber[]>([])
-  const [loading, setLoading] = useState(true)
-
-  const fetchData = useCallback(async () => {
-    setLoading(true)
-    try {
-      const [appts, svcs, brbs] = await Promise.all([
-        apiClient.get<Appointment[]>("/api/appointments"),
-        apiClient.get<Service[]>("/api/services"),
-        apiClient.get<Barber[]>("/api/barbers"),
-      ])
-      setAppointments(appts)
-      setServices(svcs)
-      setBarbers(brbs)
-    } catch {
-      // silence
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    fetchData()
-  }, [fetchData])
+  const { data: appointments = [] } = useSWR<Appointment[]>("/api/appointments", swrFetcher, { ...SWR_CONFIG, fallbackData: [] })
+  const { data: services = [] } = useSWR<Service[]>("/api/services", swrFetcher, { ...SWR_CONFIG, fallbackData: [] })
+  const { data: barbers = [], isLoading } = useSWR<Barber[]>("/api/barbers", swrFetcher, { ...SWR_CONFIG, fallbackData: [] })
+  const loading = isLoading
 
   if (loading) {
     return <div className="flex justify-center py-12 text-muted-foreground"><Loader2 className="size-6 animate-spin" /></div>

@@ -1,40 +1,41 @@
 "use client"
 
 import { CheckCircle2, Flag, Loader2, Play, X } from "lucide-react"
-import { useEffect, useState } from "react"
+import { useState } from "react"
+import useSWR, { useSWRConfig } from "swr"
 import { AppointmentStatusButton } from "./status-button"
 import { Badge, Button, Card, Field, Modal, SectionTitle, Select } from "@/components/ui-kit"
 import { formatDate, money, STATUS_META } from "@/lib/helpers"
-import { addDaysStr, todayStr } from "@/lib/seed"
+import { addDaysStr, todayStr } from "@/lib/helpers"
 import { useAuth } from "@/lib/auth-context"
+import { swrFetcher, SWR_CONFIG } from "@/lib/swr-fetcher"
 import { apiClient } from "@/lib/api-client"
+import { withLoading } from "@/lib/swal-action"
 import type { Appointment } from "@/lib/types"
 
 const PAYMENT_METHODS = ["EFECTIVO", "TRANSFERENCIA", "MERCADO_PAGO", "TARJETA"] as const
 
 export function BarberAgenda() {
   const { user } = useAuth()
-  const [appointments, setAppointments] = useState<Appointment[]>([])
-  const [loading, setLoading] = useState(true)
   const [paymentModal, setPaymentModal] = useState<{ appt: Appointment; amount: number } | null>(null)
   const today = todayStr()
   const tomorrow = addDaysStr(1)
 
-  useEffect(() => {
-    setLoading(true)
-    apiClient.get<Appointment[]>("/api/appointments")
-      .then(setAppointments)
-      .catch(() => setAppointments([]))
-      .finally(() => setLoading(false))
-  }, [])
+  const { data: appointments = [], isLoading } = useSWR<Appointment[]>(
+    "/api/appointments",
+    swrFetcher,
+    { ...SWR_CONFIG, fallbackData: [] },
+  )
+  const loading = isLoading
+
+  const { mutate } = useSWRConfig()
 
   async function updateStatus(id: string, status: string) {
-    const prev = [...appointments]
-    setAppointments((a) => a.map((x) => x.id === id ? { ...x, status: status as any } : x))
     try {
-      await apiClient.patch(`/api/appointments/${id}/status`, { status })
+      await withLoading(apiClient.patch(`/api/appointments/${id}/status`, { status }), { loading: "Actualizando turno...", success: "Turno actualizado" })
+      mutate("/api/appointments")
     } catch {
-      setAppointments(prev)
+      // revert handled by SWR revalidation
     }
   }
 
@@ -44,14 +45,12 @@ export function BarberAgenda() {
   }
 
   async function confirmPayment(apptId: string, amount: number, method: string) {
-    const prev = [...appointments]
-    setAppointments((a) => a.map((x) => x.id === apptId ? { ...x, status: "COMPLETED" as any } : x))
     try {
-      await apiClient.post("/api/payments", { appointmentId: apptId, amount, method })
-      await apiClient.patch(`/api/appointments/${apptId}/status`, { status: "COMPLETED" })
+      await withLoading(apiClient.post("/api/payments", { appointmentId: apptId, amount, method }), { loading: "Registrando pago...", success: "Pago registrado" })
+      await withLoading(apiClient.patch(`/api/appointments/${apptId}/status`, { status: "COMPLETED" }), { loading: "Completando turno...", success: "Turno completado" })
+      mutate("/api/appointments")
       setPaymentModal(null)
     } catch (err: any) {
-      setAppointments(prev)
       throw err
     }
   }
@@ -90,15 +89,9 @@ export function BarberAgenda() {
 }
 
 const VALID_TRANSITIONS: Record<string, { label: string; variant: "primary" | "success"; icon: typeof Play; nextStatus: string }[]> = {
-  PENDING: [
-    { label: "Confirmar", variant: "primary", icon: CheckCircle2, nextStatus: "CONFIRMED" },
-  ],
-  CONFIRMED: [
-    { label: "Iniciar", variant: "primary", icon: Play, nextStatus: "WAITING" },
-  ],
-  WAITING: [
-    { label: "En proceso", variant: "primary", icon: Play, nextStatus: "IN_PROGRESS" },
-  ],
+  PENDING: [{ label: "Confirmar", variant: "primary", icon: CheckCircle2, nextStatus: "CONFIRMED" }],
+  CONFIRMED: [{ label: "Iniciar", variant: "primary", icon: Play, nextStatus: "WAITING" }],
+  WAITING: [{ label: "En proceso", variant: "primary", icon: Play, nextStatus: "IN_PROGRESS" }],
 }
 
 function DaySection({ title, date, appts, onStatusChange, onComplete }: { title: string; date: string; appts: Appointment[]; onStatusChange: (id: string, status: string) => void; onComplete: (appt: Appointment) => void }) {
@@ -109,9 +102,7 @@ function DaySection({ title, date, appts, onStatusChange, onComplete }: { title:
         <span className="text-sm capitalize text-muted-foreground">· {formatDate(date)}</span>
       </div>
       {appts.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-border py-8 text-center text-sm text-muted-foreground">
-          Sin turnos.
-        </p>
+        <p className="rounded-lg border border-dashed border-border py-8 text-center text-sm text-muted-foreground">Sin turnos.</p>
       ) : (
         <div className="flex flex-col gap-2">
           {appts.map((a) => {
@@ -129,29 +120,13 @@ function DaySection({ title, date, appts, onStatusChange, onComplete }: { title:
                 </div>
                 <div className="flex flex-wrap gap-2 shrink-0">
                   {transitions.map((t) => (
-                    <AppointmentStatusButton
-                      key={t.nextStatus}
-                      icon={t.icon}
-                      label={t.label}
-                      variant={t.variant}
-                      onClick={() => onStatusChange(a.id, t.nextStatus)}
-                    />
+                    <AppointmentStatusButton key={t.nextStatus} icon={t.icon} label={t.label} variant={t.variant} onClick={() => onStatusChange(a.id, t.nextStatus)} />
                   ))}
                   {a.status === "IN_PROGRESS" && (
-                    <AppointmentStatusButton
-                      icon={Flag}
-                      label="Finalizar"
-                      variant="success"
-                      onClick={() => onComplete(a)}
-                    />
+                    <AppointmentStatusButton icon={Flag} label="Finalizar" variant="success" onClick={() => onComplete(a)} />
                   )}
                   {canCancel && (
-                    <AppointmentStatusButton
-                      icon={X}
-                      label="Cancelar"
-                      variant="ghost"
-                      onClick={() => onStatusChange(a.id, "CANCELLED")}
-                    />
+                    <AppointmentStatusButton icon={X} label="Cancelar" variant="ghost" onClick={() => onStatusChange(a.id, "CANCELLED")} />
                   )}
                 </div>
               </Card>
@@ -172,47 +147,25 @@ function PaymentModal({ appointment, defaultAmount, onSubmit, onClose }: { appoi
   async function handleSubmit() {
     const value = Number(amount)
     if (!value || value <= 0) { setError("Monto inválido"); return }
-    setSubmitting(true)
-    setError("")
+    setSubmitting(true); setError("")
     try {
       await onSubmit(method)
       onClose()
     } catch (err: any) {
       setError(err?.message ?? "Error al procesar pago")
-    } finally {
-      setSubmitting(false)
-    }
+    } finally { setSubmitting(false) }
   }
 
   return (
     <Modal open onClose={onClose} title="Registrar pago">
       <div className="grid gap-4">
-        <p className="text-sm text-muted-foreground">
-          Pago para turno de {appointment.time} hs
-        </p>
-        <Field label="Monto">
-          <input
-            type="number"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary [color-scheme:dark]"
-            autoFocus
-          />
-        </Field>
-        <Field label="Método de pago">
-          <Select value={method} onChange={(e) => setMethod(e.target.value)}>
-            {PAYMENT_METHODS.map((m) => (
-              <option key={m} value={m}>{m}</option>
-            ))}
-          </Select>
-        </Field>
+        <p className="text-sm text-muted-foreground">Pago para turno de {appointment.time} hs</p>
+        <Field label="Monto"><input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary [color-scheme:dark]" autoFocus /></Field>
+        <Field label="Método de pago"><Select value={method} onChange={(e) => setMethod(e.target.value)}>{PAYMENT_METHODS.map((m) => (<option key={m} value={m}>{m}</option>))}</Select></Field>
         {error && <p className="text-sm text-destructive">{error}</p>}
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="outline" onClick={onClose}>Cancelar</Button>
-          <Button variant="success" onClick={handleSubmit} disabled={submitting}>
-            {submitting ? <Loader2 className="size-4 animate-spin" /> : null}
-            Confirmar pago
-          </Button>
+          <Button variant="success" onClick={handleSubmit} disabled={submitting}>{submitting ? <Loader2 className="size-4 animate-spin" /> : null}Confirmar pago</Button>
         </div>
       </div>
     </Modal>
