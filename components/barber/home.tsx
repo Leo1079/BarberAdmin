@@ -110,7 +110,6 @@ function WalkInCutModal({
   barberId: string; clients: Client[]; services: Service[]; barbers: Barber[]; onClose: () => void; onSuccess: () => void
 }) {
   const [clientName, setClientName] = useState("")
-  const [clientPhone, setClientPhone] = useState("")
   const [serviceId, setServiceId] = useState(services[0]?.id ?? "")
   const [time, setTime] = useState(new Date().toTimeString().slice(0, 5))
   const [saving, setSaving] = useState(false)
@@ -119,7 +118,7 @@ function WalkInCutModal({
     if (!clientName || !serviceId) return
     setSaving(true)
     try {
-      const newClient = await withLoading(apiClient.post<{ id: string }>("/api/clients", { name: clientName, phone: clientPhone }), { loading: "Registrando cliente...", success: "Cliente registrado" })
+      const newClient = await withLoading(apiClient.post<{ id: string }>("/api/clients", { name: clientName }), { loading: "Registrando cliente...", success: "Cliente registrado" })
       await withLoading(apiClient.post("/api/appointments/walk-in", {
         clientId: newClient.id,
         barberId,
@@ -139,7 +138,6 @@ function WalkInCutModal({
     <Modal open onClose={onClose} title="Registrar corte sin turno (Walk-in)">
       <div className="grid gap-4">
         <Field label="Nombre del cliente"><Input value={clientName} onChange={(e) => setClientName(e.target.value)} placeholder="Nombre" /></Field>
-        <Field label="Teléfono"><Input value={clientPhone} onChange={(e) => setClientPhone(e.target.value)} placeholder="+54 11 5555-1234" /></Field>
         <Field label="Servicio">
           <Select value={serviceId} onChange={(e) => setServiceId(e.target.value)}>
             {services.map((s) => (<option key={s.id} value={s.id}>{s.name}</option>))}

@@ -42,6 +42,20 @@ export async function updateAdvanceStatus(id: string, status: string) {
           date: req.date,
         },
       })
+
+      const barber = await tx.barber.findUnique({ where: { id: req.barberId }, select: { name: true } })
+      const today = new Date().toISOString().slice(0, 10)
+
+      await tx.cashMovement.create({
+        data: {
+          type: 'expense',
+          category: 'Adelanto',
+          amount: req.amount,
+          description: `Adelanto - ${barber?.name}: ${req.description}`,
+          date: today,
+          barberId: req.barberId,
+        },
+      })
     }
 
     return updated

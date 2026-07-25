@@ -37,6 +37,7 @@ export function AdminCash() {
     try {
       await withLoading(apiClient.delete(`/api/cash/${id}`), { loading: "Eliminando movimiento...", success: "Movimiento eliminado" })
       mutate("/api/cash/balance")
+      mutate("/api/dashboard/owner")
     } catch {
       // silent
     }
@@ -93,7 +94,7 @@ export function AdminCash() {
         </div>
       )}
 
-      {showForm && <CashForm onClose={() => setShowForm(false)} onSuccess={() => mutate("/api/cash/balance")} />}
+      {showForm && <CashForm onClose={() => setShowForm(false)} onSuccess={() => { mutate("/api/cash/balance"); mutate("/api/dashboard/owner") }} />}
     </div>
   )
 }

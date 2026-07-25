@@ -49,6 +49,8 @@ export function AdminPayouts() {
       mutate("/api/commissions/advance-requests")
       mutate("/api/commissions/adjustments")
       mutate("/api/commissions/pending-summary")
+      mutate("/api/dashboard/owner")
+      mutate("/api/cash/balance")
     } catch (err: any) {
       alert(err?.message || "Error al aprobar solicitud")
     } finally {
@@ -61,6 +63,8 @@ export function AdminPayouts() {
     try {
       await withLoading(apiClient.patch(`/api/commissions/advance-requests/${id}/status`, { status: "rejected" }), { loading: "Rechazando solicitud...", success: "Solicitud rechazada" })
       mutate("/api/commissions/advance-requests")
+      mutate("/api/dashboard/owner")
+      mutate("/api/cash/balance")
     } catch (err: any) {
       alert(err?.message || "Error al rechazar solicitud")
     } finally {
@@ -74,6 +78,8 @@ export function AdminPayouts() {
       await withLoading(apiClient.post("/api/commissions/payouts", { barberId, dateFrom: "2000-01-01", dateTo: new Date().toISOString().slice(0, 10) }), { loading: "Liquidando pago...", success: "Liquidación completada" })
       mutate("/api/commissions/payouts")
       mutate("/api/commissions/pending-summary")
+      mutate("/api/dashboard/owner")
+      mutate("/api/cash/balance")
     } catch (err: any) {
       alert(err?.message || "Error al liquidar")
     } finally {
@@ -214,10 +220,10 @@ export function AdminPayouts() {
           barbers={barbers}
           preselectedBarberId={calcPreselected}
           onClose={() => { setCalcOpen(false); setCalcPreselected("") }}
-          onSuccess={() => { mutate("/api/commissions/payouts"); mutate("/api/commissions/pending-summary") }}
+          onSuccess={() => { mutate("/api/commissions/payouts"); mutate("/api/commissions/pending-summary"); mutate("/api/dashboard/owner"); mutate("/api/cash/balance") }}
         />
       )}
-      {adjOpen && <AdjustmentModal barbers={barbers} onClose={() => setAdjOpen(false)} onSuccess={() => { mutate("/api/commissions/adjustments"); mutate("/api/commissions/pending-summary") }} />}
+      {adjOpen && <AdjustmentModal barbers={barbers} onClose={() => setAdjOpen(false)} onSuccess={() => { mutate("/api/commissions/adjustments"); mutate("/api/commissions/pending-summary"); mutate("/api/dashboard/owner"); mutate("/api/cash/balance") }} />}
     </div>
   )
 }
